@@ -1,0 +1,435 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vue Resume Studio</title>
+  <link href="./vendor/fonts.css" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script defer src="./vendor/vue.global.prod.js"></script>
+  <script defer src="./vendor/lucide.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div id="app" class="layout">
+    <aside class="panel controls" ref="controlsEl" @scroll="onControlsScroll">
+      <header class="header">
+        <h1>简历生成工具</h1>
+        <p>快速编辑 · 实时预览 · PDF 导出</p>
+      </header>
+
+      <section class="block block-profile">
+        <h2>基础信息</h2>
+        <label>姓名<input v-model.trim="profile.name" type="text" /></label>
+        <label>求职方向<input v-model.trim="profile.title" type="text" /></label>
+        <div class="grid2">
+          <label>手机<input v-model.trim="profile.phone" type="text" /></label>
+          <label>邮箱<input v-model.trim="profile.email" type="text" /></label>
+        </div>
+        <div class="grid2">
+          <label>城市<input v-model.trim="profile.location" type="text" /></label>
+          <label>学历<input v-model.trim="profile.education" type="text" /></label>
+        </div>
+        <div class="grid2">
+          <label>出生年月<input v-model.trim="profile.birthDate" type="text" placeholder="如 1996.08" /></label>
+          <label>网站<input v-model.trim="profile.website" type="text" /></label>
+        </div>
+        <label>头像上传<input type="file" accept="image/*" @change="onAvatarUpload" /></label>
+
+        <div class="block-toggle-head profile-advanced-head">
+          <span class="profile-advanced-title">头像高级设置</span>
+          <button type="button" class="btn btn-xs" @click="avatarAdvancedCollapsed = !avatarAdvancedCollapsed">
+            {{ avatarAdvancedCollapsed ? '展开' : '收起' }}
+          </button>
+        </div>
+
+        <div v-show="!avatarAdvancedCollapsed" class="block-body-lite">
+          <div class="avatar-controls">
+            <p>头像显示区域</p>
+            <label>头像宽度（{{ avatarBoxWidth }}px）<input v-model.number="avatarBoxWidth" type="range" min="72" max="220" step="1" /></label>
+            <label>头像高度（{{ avatarBoxHeight }}px）<input v-model.number="avatarBoxHeight" type="range" min="90" max="260" step="1" /></label>
+            <label>缩放（{{ profile.avatarScale }}%）<input v-model.number="profile.avatarScale" type="range" min="80" max="180" step="1" /></label>
+            <label>水平位置（{{ profile.avatarX }}%）<input v-model.number="profile.avatarX" type="range" min="0" max="100" step="1" /></label>
+            <label>垂直位置（{{ profile.avatarY }}%）<input v-model.number="profile.avatarY" type="range" min="0" max="100" step="1" /></label>
+            <button type="button" class="btn btn-xs" @click="resetAvatarView">重置头像区域</button>
+          </div>
+        </div>
+
+        <div class="block-toggle-head profile-advanced-head">
+          <span class="profile-advanced-title">通用显示选项</span>
+          <button type="button" class="btn btn-xs" @click="commonProfileOptionsCollapsed = !commonProfileOptionsCollapsed">
+            {{ commonProfileOptionsCollapsed ? '展开' : '收起' }}
+          </button>
+        </div>
+
+        <div v-show="!commonProfileOptionsCollapsed" class="block-body-lite">
+          <div class="profile-order-controls">
+            <p>个人信息排序（拖拽）</p>
+            <div
+              class="profile-order-item"
+              v-for="(fieldKey, orderIndex) in normalizedProfileItemOrder"
+              :key="`profile-order-${fieldKey}`"
+              draggable="true"
+              :class="{
+                'is-dragging': profileDragIndex === orderIndex,
+                'is-drag-over': profileDragOverIndex === orderIndex && profileDragIndex !== orderIndex
+              }"
+              @dragstart="onProfileDragStart(orderIndex)"
+              @dragover.prevent="onProfileDragOver(orderIndex)"
+              @drop.prevent="onProfileDrop(orderIndex)"
+              @dragend="onProfileDragEnd"
+            >
+              <span class="drag-handle">☰</span>
+              <span>{{ profileFieldLabel(fieldKey) }}</span>
+            </div>
+          </div>
+
+          <div class="visibility-controls">
+            <p>显示控制（勾选即显示）</p>
+            <div class="visibility-checks">
+              <label><input v-model="profileVisible.name" type="checkbox" />姓名</label>
+              <label><input v-model="profileVisible.title" type="checkbox" />求职方向</label>
+              <label><input v-model="profileVisible.phone" type="checkbox" />手机</label>
+              <label><input v-model="profileVisible.email" type="checkbox" />邮箱</label>
+              <label><input v-model="profileVisible.location" type="checkbox" />城市</label>
+              <label><input v-model="profileVisible.education" type="checkbox" />学历</label>
+              <label><input v-model="profileVisible.birthDate" type="checkbox" />出生年月</label>
+              <label><input v-model="profileVisible.website" type="checkbox" />网站</label>
+              <label><input v-model="profileVisible.avatar" type="checkbox" />头像</label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block block-theme">
+        <h2>模板与样式</h2>
+        <label>
+          模板风格
+          <select v-model="template">
+            <option value="minimal">极简白</option>
+            <option value="sidebar">侧栏型</option>
+            <option value="card">卡片型</option>
+            <option value="timeline">时间轴</option>
+            <option value="contrast">对比黑白</option>
+            <option value="classic">经典商务</option>
+            <option value="neon">霓虹科技</option>
+            <option value="editorial">杂志排版</option>
+            <option value="luxury">奢华金</option>
+            <option value="glass">玻璃拟态</option>
+            <option value="ocean">海洋蓝调</option>
+            <option value="sunset">日落暖橙</option>
+            <option value="nordic">北欧留白</option>
+            <option value="retro">复古纸张</option>
+            <option value="mono">极黑极简</option>
+            <option value="aurora">极光渐变</option>
+            <option value="poster">品牌海报</option>
+            <option value="cyberpunk">赛博朋克</option>
+            <option value="split">分栏拼接</option>
+            <option value="magazine">杂志双列</option>
+            <option value="slate">深色留白</option>
+            <option value="architect">建筑网格</option>
+          </select>
+        </label>
+
+        <label>
+          字体指定
+          <select v-model="fontKey">
+            <option v-for="font in filteredFontOptions" :key="font.key" :value="font.key">{{ font.label }}</option>
+          </select>
+        </label>
+
+        <label>字体搜索<input v-model.trim="fontSearchKeyword" type="text" placeholder="输入字体名/拼音关键词" /></label>
+
+        <div class="font-access-actions">
+          <button type="button" class="btn btn-xs" @click="loadLocalFonts" :disabled="!fontAccessSupported || loadingLocalFonts">
+            {{ loadingLocalFonts ? '读取中...' : '读取本机字体' }}
+          </button>
+          <p class="font-access-hint">{{ fontAccessHint }}</p>
+        </div>
+
+        <div class="control-group">
+          <label><input v-model="showModuleIcons" type="checkbox" />显示模块图标</label>
+          <label>模块图标大小（{{ moduleIconSize }}px）<input v-model.number="moduleIconSize" type="range" min="12" max="24" step="1" /></label>
+          <label>个人图标大小（{{ profileIconSize }}px）<input v-model.number="profileIconSize" type="range" min="10" max="20" step="1" /></label>
+          <label><input v-model="moduleIconBorder" type="checkbox" />模块图标显示边框</label>
+          <label><input v-model="profileIconBorder" type="checkbox" />个人图标显示边框</label>
+        </div>
+
+        <div class="control-group control-group-color">
+          <div class="color-field"><span>主题色</span><input v-model="themeColor" type="color" @dblclick.stop="resetThemeColor" @contextmenu.prevent="resetThemeColor" title="双击或右键重置默认色" /></div>
+          <div class="color-field"><span>个人信息背景色</span><input v-model="profileHeaderBgColor" type="color" @dblclick.stop="resetProfileHeaderBgColor" @contextmenu.prevent="resetProfileHeaderBgColor" title="双击或右键重置默认色" /></div>
+          <div class="color-field"><span>页面背景色</span><input v-model="pageBackgroundColor" type="color" @dblclick.stop="resetPageBackgroundColor" @contextmenu.prevent="resetPageBackgroundColor" title="双击或右键重置默认色" /></div>
+          <label>个人信息背景透明度（{{ profileHeaderBgOpacity }}%）<input v-model.number="profileHeaderBgOpacity" type="range" min="0" max="100" step="1" /></label>
+          <div class="color-field"><span>图案色（图标/边框/时间轴）</span><input v-model="ornamentColor" type="color" @dblclick.stop="resetOrnamentColor" @contextmenu.prevent="resetOrnamentColor" title="双击或右键重置默认色" /></div>
+          <div class="color-field"><span>全局图标色</span><input v-model="iconGlobalColor" type="color" @dblclick.stop="resetIconGlobalColor" @contextmenu.prevent="resetIconGlobalColor" title="双击或右键重置默认色" /></div>
+        </div>
+
+        <div class="control-group">
+          <label>
+            全局编号样式
+            <select v-model="listStyle">
+              <option value="decimal">数字（1.2.3）</option>
+              <option value="disc">圆点（•）</option>
+            </select>
+          </label>
+          <label>字号（{{ fontSize }}px）<input v-model.number="fontSize" type="range" min="11" max="18" step="1" /></label>
+          <label>行距（{{ lineHeight.toFixed(2) }}）<input v-model.number="lineHeight" type="range" min="1.2" max="2" step="0.05" /></label>
+        </div>
+      </section>
+
+      <section class="block block-a4">
+        <h2>A4 预览与分页</h2>
+        <label><input v-model="showPageGuide" type="checkbox" />显示分页预览线</label>
+        <label><input v-model="smartPageBreak" type="checkbox" />导出时避免模块断页</label>
+        <label>预计页数：<strong>{{ estimatedPages }}</strong> 页</label>
+      </section>
+
+      <section class="block block-print">
+        <h2>打印缩放</h2>
+        <label>打印缩放（{{ printScale }}%）<input v-model.number="printScale" type="range" min="70" max="100" step="1" /></label>
+        <button type="button" class="btn" @click="fitToSinglePage">自动压缩到一页</button>
+      </section>
+
+      <section class="block block-module-manage">
+        <h2>模块管理</h2>
+        <div class="module-create">
+          <select v-model="newModuleType">
+            <option value="text">文本模块</option>
+            <option value="list">列表模块</option>
+            <option value="timeline">经历模块</option>
+            <option value="tags">标签模块</option>
+            <option value="gallery">图片模块</option>
+          </select>
+          <button type="button" class="btn" @click="addModule">+ 添加</button>
+        </div>
+        <p class="drag-tip">模块支持拖拽排序，也可用上下移动按钮。</p>
+      </section>
+
+      <section
+        class="block module-editor block-module-editor"
+        v-for="(module, moduleIndex) in modules"
+        :key="module.id"
+        draggable="true"
+        :class="{
+          'is-dragging': dragIndex === moduleIndex,
+          'is-drag-over': dragOverIndex === moduleIndex && dragIndex !== moduleIndex
+        }"
+        @dragstart="onDragStart(moduleIndex)"
+        @dragover.prevent="onDragOver(moduleIndex)"
+        @drop.prevent="onDrop(moduleIndex)"
+        @dragend="onDragEnd"
+      >
+        <div class="module-head">
+          <h3>{{ moduleIndex + 1 }}. {{ module.title }}</h3>
+          <div class="module-actions">
+            <button type="button" class="btn btn-xs" :disabled="moduleIndex === 0" @click="moveModule(moduleIndex, -1)">上移</button>
+            <button type="button" class="btn btn-xs" :disabled="moduleIndex === modules.length - 1" @click="moveModule(moduleIndex, 1)">下移</button>
+            <button type="button" class="btn btn-xs btn-danger" @click="removeModule(module.id)">删除</button>
+          </div>
+        </div>
+
+        <label>模块标题<input v-model.trim="module.title" type="text" /></label>
+        <label>
+          模块图标
+          <select v-model="module.iconKey">
+            <option v-for="icon in iconOptions" :key="icon.key" :value="icon.key">{{ icon.label }}</option>
+          </select>
+          <span class="module-icon-preview" :class="{ 'no-border': !moduleIconBorder }" v-if="module.iconKey !== 'none'" v-html="getIconSvg(module.iconKey, moduleIconSizeValue)"></span>
+        </label>
+        <label><input v-model="module.useCustomColors" type="checkbox" />模块独立配色</label>
+        <div v-if="module.useCustomColors" class="module-color-grid">
+          <div class="color-field"><span>模块主色</span><input v-model="module.accentColor" type="color" @dblclick.stop="resetModuleAccentColor(module)" @contextmenu.prevent="resetModuleAccentColor(module)" title="双击或右键重置默认色" /></div>
+          <div class="color-field"><span>图标色</span><input v-model="module.iconColor" type="color" @dblclick.stop="resetModuleIconColor(module)" @contextmenu.prevent="resetModuleIconColor(module)" title="双击或右键重置默认色" /></div>
+          <div class="color-field"><span>模块背景色</span><input v-model="module.surfaceColor" type="color" @dblclick.stop="resetModuleSurfaceColor(module)" @contextmenu.prevent="resetModuleSurfaceColor(module)" title="双击或右键重置默认色" /></div>
+        </div>
+
+        <template v-if="module.type === 'text'">
+          <label>内容<textarea v-model="module.content" rows="4"></textarea></label>
+          <label><input v-model="module.useNumberedList" type="checkbox" />启用编号段落</label>
+          <div v-if="module.useNumberedList" class="numbered-editor">
+            <textarea v-model="module.numberedItemsText" rows="5" placeholder="每行一项"></textarea>
+          </div>
+        </template>
+
+        <template v-else-if="module.type === 'list'">
+          <div class="row" v-for="(item, itemIndex) in module.items" :key="`${module.id}-list-${itemIndex}`">
+            <input v-model.trim="module.items[itemIndex]" type="text" />
+            <button type="button" class="btn btn-xs btn-danger" @click="removeListItem(module, itemIndex)">删</button>
+          </div>
+          <button type="button" class="btn btn-xs" @click="addListItem(module)">+ 增加列表项</button>
+        </template>
+
+        <template v-else-if="module.type === 'timeline'">
+          <label>
+            经历类型
+            <select v-model="module.timelineMode" @change="onTimelineModeChange(module)">
+              <option value="work">工作经历</option>
+              <option value="project">项目经历</option>
+              <option value="education">教育经历</option>
+            </select>
+          </label>
+          <label><input v-model="module.showTimelineAxis" type="checkbox" />显示时间轴</label>
+
+          <div class="timeline-editor" v-for="(entry, entryIndex) in module.entries" :key="`${module.id}-time-${entryIndex}`">
+            <div class="timeline-head-editor" v-if="module.timelineMode === 'work'">
+              <input v-model.trim="entry.company" type="text" placeholder="单位名称" />
+              <input v-model.trim="entry.role" type="text" placeholder="岗位" />
+              <input v-model.trim="entry.period" type="text" placeholder="任职时间" />
+            </div>
+            <div class="timeline-head-editor" v-else-if="module.timelineMode === 'education'">
+              <input v-model.trim="entry.school" type="text" placeholder="院校名称" />
+              <input v-model.trim="entry.degree" type="text" placeholder="学历层次" />
+              <input v-model.trim="entry.period" type="text" placeholder="就读时间" />
+            </div>
+            <div class="timeline-project-editor" v-else>
+              <input v-model.trim="entry.projectName" type="text" placeholder="项目名称" />
+              <input v-model.trim="entry.overview" type="text" placeholder="项目概述" />
+            </div>
+            <input v-if="module.timelineMode === 'education'" v-model.trim="entry.majorDegree" type="text" placeholder="专业 / 学历" />
+            <textarea v-model="entry.body" rows="4" placeholder="正文（换行分条）"></textarea>
+            <label v-if="module.timelineMode === 'work'">技能标签（逗号分隔）<input v-model="entry.skillTags" type="text" /></label>
+            <button type="button" class="btn btn-xs btn-danger" @click="removeTimelineEntry(module, entryIndex)">删除条目</button>
+          </div>
+          <button type="button" class="btn btn-xs" @click="addTimelineEntry(module)">+ 增加条目</button>
+        </template>
+
+        <template v-else-if="module.type === 'tags'">
+          <label>标签（逗号分隔）<input v-model="module.content" type="text" /></label>
+        </template>
+
+        <template v-else-if="module.type === 'gallery'">
+          <div class="row" v-for="(image, imageIndex) in module.images" :key="`${module.id}-img-${imageIndex}`">
+            <input v-model.trim="module.images[imageIndex]" type="text" placeholder="图片 URL" />
+            <input type="file" accept="image/*" @change="onGalleryUpload(module, imageIndex, $event)" />
+            <button type="button" class="btn btn-xs btn-danger" @click="removeGalleryImage(module, imageIndex)">删</button>
+          </div>
+          <button type="button" class="btn btn-xs" @click="addGalleryImage(module)">+ 增加图片</button>
+        </template>
+      </section>
+
+      <div class="bottom-actions">
+        <button type="button" class="btn" @click="resetAll">重置</button>
+        <button type="button" class="btn btn-primary" :disabled="downloading" @click="downloadPdf">
+          {{ downloading ? '导出中...' : '导出 PDF' }}
+        </button>
+      </div>
+    </aside>
+
+    <main class="panel preview" ref="previewEl" @scroll="onPreviewScroll">
+      <div class="preview-topbar">
+        <div class="history-actions history-actions-preview" :style="previewHistoryStyle">
+          <button type="button" class="btn btn-xs" :disabled="!canUndo" @click="undo">撤销</button>
+          <button type="button" class="btn btn-xs" :disabled="!canRedo" @click="redo">恢复</button>
+        </div>
+        <div class="preview-page-controls-inline">
+          <label>上边距（{{ pagePaddingTop }}mm）<input v-model.number="pagePaddingTop" type="range" min="4" max="24" step="1" /></label>
+          <label>下边距（{{ pagePaddingBottom }}mm）<input v-model.number="pagePaddingBottom" type="range" min="4" max="24" step="1" /></label>
+        </div>
+      </div>
+
+      <div class="preview-side-control preview-side-left">
+        <label>
+          <span class="side-caption">
+            <span class="side-caption-title">左边距</span>
+            <span class="side-caption-value">{{ pagePaddingLeft }}mm</span>
+          </span>
+          <input v-model.number="pagePaddingLeft" type="range" min="4" max="24" step="1" orient="vertical" />
+        </label>
+      </div>
+      <div class="preview-side-control preview-side-right">
+        <label>
+          <span class="side-caption">
+            <span class="side-caption-title">右边距</span>
+            <span class="side-caption-value">{{ pagePaddingRight }}mm</span>
+          </span>
+          <input v-model.number="pagePaddingRight" type="range" min="4" max="24" step="1" orient="vertical" />
+        </label>
+      </div>
+
+      <div class="page-viewport" ref="pageViewport">
+        <section
+          id="resume"
+          class="resume"
+          :class="[`theme-${template}`, { 'show-page-guide': showPageGuide, 'custom-page-bg': isPageBackgroundCustom }]"
+          :style="resumeStyle"
+          ref="resumeEl"
+        >
+          <header class="resume-header">
+            <div>
+              <h1 v-if="profileVisible.name">{{ profile.name }}</h1>
+              <h2 v-if="profileVisible.title">{{ profile.title }}</h2>
+              <div class="contact" v-if="profileContactItems.length">
+                <div class="contact-item" v-for="(item, idx) in profileContactItems" :key="`profile-item-${idx}`">
+                  <span class="contact-icon" :class="{ 'no-border': !profileIconBorder }" v-html="getIconSvg(item.iconKey, profileIconSizeValue)"></span>
+                  <span class="contact-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="avatar" :style="avatarBoxStyle" v-if="profileVisible.avatar"><img :src="profile.avatar" :style="avatarImageStyle" alt="头像" /></div>
+          </header>
+
+          <section class="resume-section" :class="`module-${module.type}`" :style="moduleStyle(module)" v-for="module in modules" :key="`preview-${module.id}`">
+            <h3 class="section-title">
+              <span v-if="moduleIconSvg(module)" class="section-icon" :class="{ 'no-border': !moduleIconBorder }" v-html="moduleIconSvg(module)"></span>
+              <span>{{ module.title }}</span>
+            </h3>
+
+            <p v-if="module.type === 'text'">{{ module.content }}</p>
+
+            <ol v-if="module.type === 'text' && module.useNumberedList && listStyle === 'decimal'" class="numbered-list">
+              <li v-for="(line, lineIndex) in splitLines(module.numberedItemsText)" :key="`${module.id}-pv-numbered-${lineIndex}`">{{ line }}</li>
+            </ol>
+            <ul v-if="module.type === 'text' && module.useNumberedList && listStyle === 'disc'" class="bullet-list">
+              <li v-for="(line, lineIndex) in splitLines(module.numberedItemsText)" :key="`${module.id}-pv-bullet-${lineIndex}`">{{ line }}</li>
+            </ul>
+
+            <ul v-else-if="module.type === 'list' && listStyle === 'disc'" class="bullet-list">
+              <li v-for="(item, itemIndex) in module.items" :key="`${module.id}-pv-list-${itemIndex}`">{{ item }}</li>
+            </ul>
+            <ol v-else-if="module.type === 'list' && listStyle === 'decimal'" class="numbered-list">
+              <li v-for="(item, itemIndex) in module.items" :key="`${module.id}-pv-list-${itemIndex}`">{{ item }}</li>
+            </ol>
+
+            <div v-else-if="module.type === 'timeline'" class="timeline" :class="{ 'timeline-no-axis': !module.showTimelineAxis }">
+              <article class="timeline-item" v-for="(entry, entryIndex) in module.entries" :key="`${module.id}-pv-time-${entryIndex}`">
+                <div class="timeline-head" v-if="module.timelineMode === 'work'">
+                  <strong>{{ entry.company }}</strong>
+                  <em>{{ entry.role }}</em>
+                  <span>{{ entry.period }}</span>
+                </div>
+                <div class="timeline-head" v-else-if="module.timelineMode === 'education'">
+                  <strong>{{ entry.school }}</strong>
+                  <em>{{ entry.degree }}</em>
+                  <span>{{ entry.period }}</span>
+                </div>
+                <div class="timeline-project-head" v-else>
+                  <strong>{{ entry.projectName }}</strong>
+                  <p v-if="entry.overview" class="timeline-overview">{{ entry.overview }}</p>
+                </div>
+                <p v-if="module.timelineMode === 'education' && entry.majorDegree" class="timeline-overview">{{ entry.majorDegree }}</p>
+                <ol class="timeline-body-list" v-if="splitLines(entry.body).length && listStyle === 'decimal'">
+                  <li v-for="(line, lineIndex) in splitLines(entry.body)" :key="`${module.id}-pv-time-${entryIndex}-line-${lineIndex}`">{{ line }}</li>
+                </ol>
+                <ul class="timeline-bullet-list" v-if="splitLines(entry.body).length && listStyle === 'disc'">
+                  <li v-for="(line, lineIndex) in splitLines(entry.body)" :key="`${module.id}-pv-time-${entryIndex}-bullet-${lineIndex}`">{{ line }}</li>
+                </ul>
+                <div v-if="module.timelineMode === 'work' && splitTags(entry.skillTags || '').length" class="tags timeline-tags">
+                  <span class="tag" v-for="(tag, tagIndex) in splitTags(entry.skillTags || '')" :key="`${module.id}-pv-time-${entryIndex}-tag-${tagIndex}`">{{ tag }}</span>
+                </div>
+              </article>
+            </div>
+
+            <div v-else-if="module.type === 'tags'" class="tags">
+              <span class="tag" v-for="(tag, tagIndex) in splitTags(module.content)" :key="`${module.id}-pv-tag-${tagIndex}`">{{ tag }}</span>
+            </div>
+
+            <div v-else-if="module.type === 'gallery'" class="gallery">
+              <img v-for="(image, imageIndex) in module.images" :key="`${module.id}-pv-img-${imageIndex}`" :src="image || placeholderImage" alt="作品图" />
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

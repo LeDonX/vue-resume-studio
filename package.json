@@ -1,0 +1,10 @@
+{
+  "name": "vue-resume-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vue resume builder with DocRaptor PDF export",
+  "scripts": {
+    "start": "node server.js",
+    "check:smoke": "node scripts/smoke-check.js"
+  }
+}
