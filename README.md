@@ -1,49 +1,81 @@
-# Vue Resume Studio (Vite + Vue)
+﻿# Vue Resume Studio
 
-该项目已重构为标准 `Vite + Vue` 工程，可通过 `npm run build` 产出纯静态 `dist/`，用于部署到 Gitee Pages。
+基于 `Vite + Vue 3` 的简历编辑器，支持实时预览、样式配置、PDF 导出（浏览器打印为主，后端导出为可选高级功能）。
 
-## 目录结构
+## 功能概览
+
+- 模块化编辑（文本 / 列表 / 经历 / 标签 / 图片）
+- 模块拖拽排序、收起展开
+- 主题与样式配置（颜色、图标、边距、排版、标签样式等）
+- PDF 导出：
+  - 默认：浏览器打印（纯前端）
+  - 可选：本地 `server.js` 后端导出
+
+## 项目结构
 
 ```text
-index.html
-src/
-  main.js
-  App.vue
-  styles.css
-vite.config.js
-assets/
-vendor/
+.
+├─ index.html
+├─ src/
+│  ├─ main.js
+│  ├─ App.vue
+│  └─ styles.css
+├─ assets/
+├─ vendor/
+├─ scripts/
+├─ server.js
+├─ vite.config.js
+└─ package.json
 ```
 
-## 开发与打包
+## 本地开发
 
 ```bash
 npm install
 npm run dev
+```
+
+## 构建与预览
+
+```bash
 npm run build
 npm run preview
 ```
 
-## Gitee Pages base 配置
+可选检查：
 
-`vite.config.js` 已支持通过环境变量配置子目录部署：
+```bash
+npm run check:smoke
+```
 
-- 默认：`base: "./"`（子目录部署不易 404）
-- 若你希望固定仓库名路径，新增 `.env.production`：
+## 部署到 GitHub Pages / Gitee Pages
+
+本项目可直接构建为纯静态文件：
+
+```bash
+npm run build
+```
+
+产物位于 `dist/`。
+
+### `base` 路径配置
+
+`vite.config.js` 已支持通过环境变量配置子路径部署：
+
+- 默认：`base: "./"`（相对路径，适合大多数静态托管）
+- 如需固定仓库子路径，新建 `.env.production`：
 
 ```bash
 VITE_BASE_PATH=/你的仓库名/
 ```
 
-## server.js / .env 说明
+## 后端导出说明（可选）
 
-- `server.js` 旧逻辑包含两部分：
-  - 本地静态文件服务
-  - 本地 API：`/api/health`、`/api/export-pdf`（调用本机浏览器无头导出 PDF）
-- 在纯静态托管（Gitee Pages）中无法运行 Node 服务，因此该后端链路不可用。
-- 已在前端改为浏览器打印导出（`window.print`），可在新窗口“另存为 PDF”。
-- `.env` 中的 `BROWSER_BIN` 仅给旧 `server.js` 使用，静态部署不需要。
+- `server.js` 仅用于本地后端导出 PDF（调用本机浏览器无头打印）
+- GitHub Pages / Gitee Pages 为静态托管，**不会运行 `server.js`**
+- 静态部署时请使用浏览器打印导出
 
-## 安全提示
+## 安全说明
 
-纯前端项目中不要硬编码私密 API Key。任何写在前端代码中的密钥都可被用户看到。
+纯前端项目不要在代码中硬编码敏感密钥（如 API Key）。  
+前端代码会暴露给所有访问者。
