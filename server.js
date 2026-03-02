@@ -125,6 +125,8 @@ async function renderPdfViaLocalBrowser(html) {
       "--disable-gpu",
       "--no-first-run",
       "--no-default-browser-check",
+      "--no-pdf-header-footer",
+      "--print-to-pdf-no-header",
       `--print-to-pdf=${pdfFile}`,
       `file:///${htmlFile.replace(/\\/g, "/")}`
     ];

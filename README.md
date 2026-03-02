@@ -1,58 +1,49 @@
-# Vue Resume Studio（免费 PDF 导出）
+# Vue Resume Studio (Vite + Vue)
 
-## 方案说明
+该项目已重构为标准 `Vite + Vue` 工程，可通过 `npm run build` 产出纯静态 `dist/`，用于部署到 Gitee Pages。
 
-现在使用**本机 Edge/Chrome 无头打印**导出 PDF：
-
-- 免费，无需任何付费 API key
-- 不依赖 DocRaptor
-- 后端调用本机浏览器生成 A4 PDF
-- 前端第三方资源已本地化（Vue、Lucide、字体、默认图片）
-
-## 本地资源目录
-
-- `vendor/vue.global.prod.js`：Vue 运行时
-- `vendor/lucide.js`：Lucide 图标库
-- `vendor/fonts.css` + `vendor/fonts/*`：本地字体文件
-- `assets/default-avatar.jpg`、`assets/placeholder-image.jpg`：默认图片
-
-## 启动方式
-
-### 一键启动（推荐）
-
-双击：`start-resume.bat`
-
-### 手动启动
-
-```powershell
-cd C:\Users\10217\vue-resume-studio
-node server.js
-```
-
-浏览器打开：
+## 目录结构
 
 ```text
-http://127.0.0.1:8787/
+index.html
+src/
+  main.js
+  App.vue
+  styles.css
+vite.config.js
+assets/
+vendor/
 ```
 
-## 健康检查
+## 开发与打包
 
-打开：
-
-```text
-http://127.0.0.1:8787/api/health
+```bash
+npm install
+npm run dev
+npm run build
+npm run preview
 ```
 
-返回里看：
+## Gitee Pages base 配置
 
-- `has_browser: true` 才能导出
-- `browser_path` 为当前检测到的浏览器路径
+`vite.config.js` 已支持通过环境变量配置子目录部署：
 
-## 常见问题
+- 默认：`base: "./"`（子目录部署不易 404）
+- 若你希望固定仓库名路径，新增 `.env.production`：
 
-- `has_browser: false`
-  - 请安装 Edge 或 Chrome
-  - 或设置环境变量 `BROWSER_BIN` 指向浏览器 exe 路径
+```bash
+VITE_BASE_PATH=/你的仓库名/
+```
 
-- 导出失败后走打印
-  - 在打印设置里关闭“页眉和页脚”，避免显示标题和文件路径
+## server.js / .env 说明
+
+- `server.js` 旧逻辑包含两部分：
+  - 本地静态文件服务
+  - 本地 API：`/api/health`、`/api/export-pdf`（调用本机浏览器无头导出 PDF）
+- 在纯静态托管（Gitee Pages）中无法运行 Node 服务，因此该后端链路不可用。
+- 已在前端改为浏览器打印导出（`window.print`），可在新窗口“另存为 PDF”。
+- `.env` 中的 `BROWSER_BIN` 仅给旧 `server.js` 使用，静态部署不需要。
+
+## 安全提示
+
+纯前端项目中不要硬编码私密 API Key。任何写在前端代码中的密钥都可被用户看到。
