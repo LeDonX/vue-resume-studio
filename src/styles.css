@@ -888,6 +888,10 @@ textarea {
   gap: 6px;
 }
 
+.import-data-input {
+  display: none;
+}
+
 .export-action-buttons .btn {
   min-width: 86px;
   white-space: nowrap;

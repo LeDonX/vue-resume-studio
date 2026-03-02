@@ -495,12 +495,15 @@
         <div class="history-actions history-actions-preview" :style="previewHistoryStyle">
           <button type="button" class="btn btn-xs" :disabled="!canUndo" @click="undo">撤销</button>
           <button type="button" class="btn btn-xs" :disabled="!canRedo" @click="redo">恢复</button>
+          <button type="button" class="btn btn-xs" :disabled="downloading" @click="resetAll">重置</button>
         </div>
         <div class="export-actions export-actions-preview" :style="previewExportStyle">
           <div class="export-action-buttons">
-            <button type="button" class="btn btn-xs" :disabled="downloading" @click="resetAll">重置</button>
+            <input ref="importDataInput" class="import-data-input" type="file" accept=".json,application/json" @change="onImportDataFileChange" />
+            <button type="button" class="btn btn-xs" :disabled="downloading" @click="triggerImportData">导入数据</button>
+            <button type="button" class="btn btn-xs" :disabled="downloading" @click="exportDataFile">导出数据</button>
             <button type="button" class="btn btn-xs btn-primary" :disabled="downloading" @click="downloadPdf('print')">
-              {{ downloading && downloadingMode === 'print' ? '导出中...' : '导出' }}
+              {{ downloading && downloadingMode === 'print' ? '导出中...' : '导出PDF' }}
             </button>
             <button type="button" class="btn btn-xs" :disabled="downloading" @click="downloadPdf('backend')">
               {{ downloading && downloadingMode === 'backend' ? '后端中...' : '后端导出' }}
@@ -637,8 +640,11 @@ import fontCssUrl from "../vendor/fonts.css?url";
 
   const DEFAULT_AVATAR = defaultAvatarUrl;
   const PLACEHOLDER_IMAGE = placeholderImageUrl;
-    const A4_HEIGHT_MM = 297;
+  const A4_HEIGHT_MM = 297;
   const HISTORY_LIMIT = 120;
+  const SNAPSHOT_SCHEMA = "vue-resume-studio.snapshot";
+  const SNAPSHOT_VERSION = 1;
+  const LOCAL_SNAPSHOT_STORAGE_KEY = `${SNAPSHOT_SCHEMA}.local`;
   const DEFAULT_THEME_COLOR = "#2457f5";
   const DEFAULT_TIMELINE_COMPANY_COLOR = "#1f2735";
   const DEFAULT_TIMELINE_ROLE_COLOR = "#1f2735";
@@ -957,6 +963,9 @@ import fontCssUrl from "../vendor/fonts.css?url";
         historyRedoStack: [],
         historyReady: false,
         isApplyingHistory: false,
+        localSaveWarned: false,
+        historyRecordTimerId: null,
+        pendingHistorySnapshot: "",
         avatarAdvancedCollapsed: true,
         commonProfileOptionsCollapsed: true,
         themeFontAdvancedCollapsed: true,
@@ -1233,10 +1242,172 @@ import fontCssUrl from "../vendor/fonts.css?url";
           modules: this.modules
         };
       },
+      extractSnapshotObject(raw) {
+        if (!raw) {
+          return null;
+        }
+        if (typeof raw === "string") {
+          try {
+            return this.extractSnapshotObject(JSON.parse(raw));
+          } catch {
+            return null;
+          }
+        }
+        if (typeof raw !== "object" || Array.isArray(raw)) {
+          return null;
+        }
+        const candidate = raw.snapshot ?? raw.data ?? raw;
+        if (typeof candidate === "string") {
+          try {
+            return this.extractSnapshotObject(JSON.parse(candidate));
+          } catch {
+            return null;
+          }
+        }
+        if (typeof candidate !== "object" || Array.isArray(candidate)) {
+          return null;
+        }
+        const hasProfile = candidate.profile && typeof candidate.profile === "object";
+        const hasModules = Array.isArray(candidate.modules);
+        if (!hasProfile || !hasModules) {
+          return null;
+        }
+        return candidate;
+      },
+      persistSnapshotToLocal(serialized = this.historySnapshotSerialized) {
+        try {
+          const snapshot = typeof serialized === "string" ? serialized : JSON.stringify(serialized);
+          const record = {
+            schema: SNAPSHOT_SCHEMA,
+            version: SNAPSHOT_VERSION,
+            savedAt: new Date().toISOString(),
+            snapshot
+          };
+          window.localStorage.setItem(LOCAL_SNAPSHOT_STORAGE_KEY, JSON.stringify(record));
+          this.localSaveWarned = false;
+        } catch (error) {
+          if (this.localSaveWarned) {
+            return;
+          }
+          this.localSaveWarned = true;
+          console.warn("本地自动保存失败：", error);
+        }
+      },
+      restoreSnapshotFromLocal() {
+        try {
+          const raw = window.localStorage.getItem(LOCAL_SNAPSHOT_STORAGE_KEY);
+          if (!raw) {
+            return false;
+          }
+          const snapshot = this.extractSnapshotObject(JSON.parse(raw));
+          if (!snapshot) {
+            return false;
+          }
+          this.applyHistorySnapshot(JSON.stringify(snapshot));
+          return true;
+        } catch (error) {
+          console.warn("本地数据恢复失败：", error);
+          return false;
+        }
+      },
+      exportDataFile() {
+        const payload = {
+          schema: SNAPSHOT_SCHEMA,
+          version: SNAPSHOT_VERSION,
+          exportedAt: new Date().toISOString(),
+          snapshot: this.buildHistorySnapshot()
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], {
+          type: "application/json;charset=utf-8"
+        });
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        const safeName = String(this.profile?.name || "resume")
+          .trim()
+          .replace(/[\\/:*?"<>|]+/g, "_")
+          .replace(/\s+/g, "_")
+          .slice(0, 48) || "resume";
+        anchor.href = objectUrl;
+        anchor.download = `${safeName}-snapshot.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      },
+      triggerImportData() {
+        this.$refs.importDataInput?.click();
+      },
+      onImportDataFileChange(event) {
+        const input = event?.target;
+        const file = input?.files?.[0];
+        if (!file) {
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const text = String(reader.result || "");
+            const parsed = JSON.parse(text);
+            const snapshot = this.extractSnapshotObject(parsed);
+            if (!snapshot) {
+              throw new Error("无效的简历数据文件");
+            }
+            this.applyHistorySnapshot(JSON.stringify(snapshot));
+            this.$nextTick(() => {
+              this.initializeHistory();
+              this.persistSnapshotToLocal();
+            });
+          } catch (error) {
+            const message = String(error?.message || error || "未知错误").slice(0, 220);
+            alert(`导入失败：${message}`);
+          } finally {
+            input.value = "";
+          }
+        };
+        reader.onerror = () => {
+          alert("文件读取失败，请重试");
+          input.value = "";
+        };
+        reader.readAsText(file, "utf-8");
+      },
       initializeHistory() {
+        if (this.historyRecordTimerId) {
+          clearTimeout(this.historyRecordTimerId);
+          this.historyRecordTimerId = null;
+        }
+        this.pendingHistorySnapshot = "";
         this.historyUndoStack = [this.historySnapshotSerialized];
         this.historyRedoStack = [];
         this.historyReady = true;
+      },
+      scheduleHistorySnapshot(serialized) {
+        this.pendingHistorySnapshot = serialized;
+        if (this.historyRecordTimerId) {
+          clearTimeout(this.historyRecordTimerId);
+        }
+        this.historyRecordTimerId = setTimeout(() => {
+          this.historyRecordTimerId = null;
+          const pending = this.pendingHistorySnapshot;
+          this.pendingHistorySnapshot = "";
+          if (!pending) {
+            return;
+          }
+          this.recordHistorySnapshot(pending);
+          this.persistSnapshotToLocal(pending);
+        }, 180);
+      },
+      flushScheduledHistorySnapshot() {
+        if (this.historyRecordTimerId) {
+          clearTimeout(this.historyRecordTimerId);
+          this.historyRecordTimerId = null;
+        }
+        const pending = this.pendingHistorySnapshot;
+        this.pendingHistorySnapshot = "";
+        if (!pending) {
+          return;
+        }
+        this.recordHistorySnapshot(pending);
+        this.persistSnapshotToLocal(pending);
       },
       recordHistorySnapshot(serialized) {
         const last = this.historyUndoStack[this.historyUndoStack.length - 1];
@@ -1313,9 +1484,11 @@ import fontCssUrl from "../vendor/fonts.css?url";
 
         this.$nextTick(() => {
           this.isApplyingHistory = false;
+          this.persistSnapshotToLocal();
         });
       },
       undo() {
+        this.flushScheduledHistorySnapshot();
         if (!this.canUndo) {
           return;
         }
@@ -1325,6 +1498,7 @@ import fontCssUrl from "../vendor/fonts.css?url";
         this.applyHistorySnapshot(previous);
       },
       redo() {
+        this.flushScheduledHistorySnapshot();
         if (!this.canRedo) {
           return;
         }
@@ -2789,8 +2963,10 @@ ${resume.outerHTML}
     mounted() {
       this.ensureModuleIcons();
       this.ensureProfileItemOrder();
+      this.restoreSnapshotFromLocal();
       this.recalcPageEstimate();
       this.initializeHistory();
+      this.persistSnapshotToLocal();
       window.addEventListener("resize", this.recalcPageEstimate);
       window.addEventListener("resize", this.updatePreviewHistoryPosition);
       window.addEventListener("scroll", this.updatePreviewHistoryPosition, true);
@@ -2803,6 +2979,11 @@ ${resume.outerHTML}
         clearTimeout(this.recalcTimerId);
         this.recalcTimerId = null;
       }
+      if (this.historyRecordTimerId) {
+        clearTimeout(this.historyRecordTimerId);
+        this.historyRecordTimerId = null;
+      }
+      this.flushScheduledHistorySnapshot();
       window.removeEventListener("resize", this.recalcPageEstimate);
       window.removeEventListener("resize", this.updatePreviewHistoryPosition);
       window.removeEventListener("scroll", this.updatePreviewHistoryPosition, true);
@@ -2815,7 +2996,7 @@ ${resume.outerHTML}
         if (newValue === oldValue) {
           return;
         }
-        this.recordHistorySnapshot(newValue);
+        this.scheduleHistorySnapshot(newValue);
       },
       template() {
         this.recalcPageEstimate();
